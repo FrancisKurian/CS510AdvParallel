@@ -1,0 +1,118 @@
+---
+title: "Advect Parallel Process"
+author: "Francis Kurian"
+date: "10/22/2021"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("src/advect.R")
+source("src/diffuse.R")
+
+library(foreach)
+library(doParallel)
+library(parallel)
+library(profvis)
+library(microbenchmark)
+```
+
+## Initial Parameters
+
+```{r cars}
+# find no. of cores and register
+cores <- detectCores()
+cluster <- makePSOCKcluster(cores)
+registerDoParallel(cores=cores)
+
+#### Defines parameters ####
+D <- 1e-8        # Diffusion coefficient in m^2/s
+delta.t <- 1e-3  # Time step size in s
+end.time <- 0.1    # End simulation time in s
+start.x <- 5.6
+start.y <- -0.97
+
+# Creates points to follow
+num.dots <- 100
+dotsx <- rep(start.x, num.dots) # replicates start.x 1000 times
+dotsy <- rep(start.y, num.dots) # replicates start.y 1000 times
+dots.start <- matrix(c(dotsx, dotsy), num.dots, 2) # creates a matrix with num.dots rows and 2 columns filled with x & y
+
+# Reads in position (x,y) and velocity (Ux,Uy) data
+x <- as.matrix(read.table("data/x.csv", header = FALSE, sep = ","))
+y <- as.matrix(read.table("data/y.csv", header = FALSE, sep = ","))
+Ux <- as.matrix(read.table("data/Ux.csv", header = FALSE, sep = ","))
+Uy <- as.matrix(read.table("data/Uy.csv", header = FALSE, sep = ","))
+Ux[is.na(Ux)] <- 0
+Uy[is.na(Uy)] <- 0
+
+t <- 0
+dots <- dots.start  # re-assigning the start matrix to dots
+
+```
+
+## profile of given simulation- Benchmarking Performance
+Print function is commented because later foreach functionality ignores it. Otherwise original WHILE loop was used to benchmark
+
+```{r advec1, echo=FALSE}
+
+# Profile the original simulation using profvis
+
+profvis({
+  trial1 <-  while(t <= end.time){
+    dots <- advect(dots, x, y, Ux, Uy, 0.5*delta.t)
+    dots <- diffuse(dots, D, delta.t)
+    dots <- advect(dots, x, y, Ux, Uy, 0.5*delta.t)
+    t <- t + delta.t
+    # print(paste("t =", t))
+  }
+  dots.end1 <- dots
+  
+  
+})
+
+```
+
+
+## Profile of modified parallel process
+
+A vector 'ts' created to modify the WHILE loop into a FOR and FOREACH with %dopar% parallel process construct. foreach work differently as it does not create global objects so a 'dots' dataset was returned at the end of the time trials. Profivis was used to measure the processing time. 
+
+```{r advec2, echo=FALSE}
+
+# define a sequence to use inside foreach function
+
+ts=seq(delta.t,end.time,delta.t)
+
+# Profile the original simulation using profvis
+
+profvis({
+  dots.end2 <- foreach(t =ts,.combine ='cbind'  )%dopar%{
+    dots <- advect(dots, x, y, Ux, Uy, 0.5*delta.t)
+    dots <- diffuse(dots, D, delta.t)
+    dots <- advect(dots, x, y, Ux, Uy, 0.5*delta.t)
+    if(t==tail(ts, n=1)){
+      return(dots)  
+    }
+  }
+  
+})
+```
+
+## Plot: Given Simulation
+
+```{r pic1, echo=FALSE}
+plot(dots.end1[, 1], dots.end1[, 2], col = "black", pch = 19)
+points(dots.start[, 1], dots.start[, 2], col = "red", pch = 19)
+
+```
+## Plot: Revised Simulation
+
+```{r pic2, echo=FALSE}
+plot(dots.end2[, 1], dots.end2[, 2], col = "black", pch = 19)
+points(dots.start[, 1], dots.start[, 2], col = "red", pch = 19)
+
+```
