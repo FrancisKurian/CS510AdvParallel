@@ -5,8 +5,6 @@ source("src/diffuse.R")
 library(foreach)
 library(doParallel)
 library(parallel)
-library(profvis)
-library(microbenchmark)
 
 # find no. of cores and register
 cores <- detectCores()
@@ -42,9 +40,8 @@ dots <- dots.start  # re-assigning the start matrix to dots
 
 ts=seq(delta.t,end.time,delta.t)
 
-# Profile the original simulation using profvis
 
-profvis({
+ptime1 <- system.time({
   trial1 <-  while(t <= end.time){
     dots <- advect(dots, x, y, Ux, Uy, 0.5*delta.t)
     dots <- diffuse(dots, D, delta.t)
@@ -57,9 +54,11 @@ profvis({
   
 })
 
-#profile of modified parallel process
+ptime1
 
-profvis({
+
+
+ptime2 <- system.time({
   dots.end2 <- foreach(t =ts,.combine ='cbind'  )%dopar%{
     dots <- advect(dots, x, y, Ux, Uy, 0.5*delta.t)
     dots <- diffuse(dots, D, delta.t)
@@ -71,14 +70,10 @@ profvis({
   
 })
 
-# dots.end1 
-# dots.end2 
+ptime2
 
-plot(dots.end1[, 1], dots.end1[, 2], col = "black", pch = 19)
-points(dots.start[, 1], dots.start[, 2], col = "red", pch = 19)
 
-plot(dots.end2[, 1], dots.end2[, 2], col = "black", pch = 19)
-points(dots.start[, 1], dots.start[, 2], col = "red", pch = 19)
+
 
 
 
